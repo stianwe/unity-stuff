@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using UnityEngine.UI;
 
 public class SliderAnimator : MonoBehaviour
@@ -38,13 +39,19 @@ public class SliderAnimator : MonoBehaviour
 	        {
 	            _slider.value = _endVal;
 	            IsAnimating = false;
-                OnEnd();
+	            if (OnEnd != null)
+	            {
+	                OnEnd();
+	            }
 	        }
             // Check if we are wrapping around
 	        else if ((_incrementing && _slider.value + Delta >= _slider.maxValue) ||
                 (!_incrementing && _slider.value - Delta <= _slider.minValue))
 	        {
-                OnWrapAround();
+	            if (OnWrapAround != null)
+	            {
+                    OnWrapAround();
+	            }
 	            _slider.value = _incrementing ? _slider.minValue : _slider.maxValue;
 	        }
 	        // Increment slider
@@ -88,16 +95,10 @@ public class SliderAnimator : MonoBehaviour
     /// <summary>
     /// Called when the slider wraps around
     /// </summary>
-    public virtual void OnWrapAround()
-    {
-        
-    }
+    public Action OnWrapAround;
 
     /// <summary>
     /// Called when the slider is done animating
     /// </summary>
-    public virtual void OnEnd()
-    {
-        
-    }
+    public Action OnEnd;
 }
