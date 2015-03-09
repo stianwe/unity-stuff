@@ -1,6 +1,7 @@
 ﻿using System;
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public class MatchMaker : MonoBehaviour
 {
@@ -13,12 +14,15 @@ public class MatchMaker : MonoBehaviour
     private bool _autoRetry;
     private bool _stop = false;
 
+    private readonly List<Action<HostData[]>> _onHostListReceivedActions = new List<Action<HostData[]>>();
+    private readonly object _onHostListReceivedActionsLock = new object();
+
     /// <summary>
     /// Quick host a game with a newly generated GUID as game name
     /// </summary>
-    public void HostGame()
+    public void CreateGame()
     {
-        HostGame(Guid.NewGuid().ToString());
+        CreateGame(Guid.NewGuid().ToString());
     }
 
     /// <summary>
@@ -26,9 +30,9 @@ public class MatchMaker : MonoBehaviour
     /// </summary>
     /// <param name="gameName">The game name</param>
     /// <param name="comment">Comment used to describe the game/host</param>
-    public void HostGame(string gameName, string comment=null)
+    public void CreateGame(string gameName, string comment=null)
     {
-        Log("Hosting game..");
+        Log("Creating game..");
         Network.InitializeServer(MaxPlayers - 1, Port, !Network.HavePublicAddress());
         if (comment != null)
         {
@@ -46,6 +50,33 @@ public class MatchMaker : MonoBehaviour
         return MasterServer.PollHostList();
     }
 
+    private void GetAvailableHostsAsync(Action<HostData[]> a)
+    {
+        Log("Requesting host list from master server..");
+        MasterServer.RequestHostList(GameTypeName);
+        lock (_onHostListReceivedActionsLock)
+        {
+            _onHostListReceivedActions.Add(a);
+        }
+    }
+
+    void OnMasterServerEvent(MasterServerEvent e)
+    {
+        if (e == MasterServerEvent.HostListReceived)
+        {
+            Log("Received host list from master server.");
+            lock (_onHostListReceivedActionsLock)
+            {
+                var hostData = MasterServer.PollHostList();
+                foreach (var action in _onHostListReceivedActions)
+                {
+                    action(hostData);
+                }
+                _onHostListReceivedActions.Clear();
+            }
+        }
+    }
+
     /// <summary>
     /// Join a host.
     /// </summary>
@@ -58,35 +89,50 @@ public class MatchMaker : MonoBehaviour
     /// <param name="retryTimeout">
     /// The time between each auto retry
     /// </param>
-    public void JoinHost(HostPreference preference = HostPreference.FirstAvailable, bool autoRetry = true, float retryTimeout = 1f)
+    public void JoinGame(HostPreference preference = HostPreference.FirstAvailable, bool autoRetry = true, float retryTimeout = 1f)
     {
-        StartCoroutine(JoinHostHelper(preference, autoRetry, retryTimeout));
+        StartCoroutine(JoinGameHelper(preference, autoRetry, retryTimeout));
     }
 
-    private IEnumerator JoinHostHelper(HostPreference preference, bool autoRetry, float retryTimeout)
+    private HostData SelectHost(HostData[] hosts, HostPreference preference)
     {
-        if (_stop) yield break;
-        _autoRetry = autoRetry;
-        Log("Searching for hosts..");
-        var hosts = GetAvailableHosts();
-        Log("Found " + hosts.Length + " hosts.");
+        Log("Found " + hosts.Length + " host(s).");
         foreach (var host in hosts)
         {
-            Log("Checking host [gameName=" + host.gameName + ", connectedPlayers=" + host.connectedPlayers +
+            Log("Checking game [gameName=" + host.gameName + ", connectedPlayers=" + host.connectedPlayers +
                 ", comment=" + host.comment + ", playerLimit=" + host.playerLimit + "]..");
             if (host.connectedPlayers < MaxPlayers && preference == HostPreference.FirstAvailable)
             {
-                Log("Found suitable host. Joining..");
-                Network.Connect(host);
-                _autoRetry = false;
-                break;
+                return host;
             }
         }
+        return null;
+    }
+
+    private IEnumerator JoinGameHelper(HostPreference preference, bool autoRetry, float retryTimeout, Action<bool> onDone=null)
+    {
+        if (_stop) yield break;
+        _autoRetry = autoRetry;
+        Log("Searching for games..");
+        GetAvailableHostsAsync(hosts =>
+        {
+            var host = SelectHost(hosts, preference);
+            if (onDone != null)
+            {
+                onDone(host != null);
+            }
+            if (host != null)
+            {
+                Log("Found suitable game. Joining..");
+                StopAutoRetry();
+                Network.Connect(host);
+            }
+        });
         if (_autoRetry)
         {
             Log("Auto retry in " + retryTimeout);
             yield return new WaitForSeconds(retryTimeout);
-            StartCoroutine(JoinHostHelper(preference, true, retryTimeout));
+            StartCoroutine(JoinGameHelper(preference, true, retryTimeout));
         }
     }
 
@@ -98,6 +144,19 @@ public class MatchMaker : MonoBehaviour
         Log("Stopping auto retry.");
         _autoRetry = false;
         _stop = true;
+    }
+
+    /// <summary>
+    /// Attempts to join a game, and if no suitable game is found, hosts a new game.
+    /// </summary>
+    public void JoinOrCreateGame()
+    {
+        StartCoroutine(JoinGameHelper(HostPreference.FirstAvailable, false, 0, didJoin =>
+        {
+            if (didJoin) return;
+            Log("Did not find any games.");
+            CreateGame();
+        }));
     }
 
     #region EventLogging
