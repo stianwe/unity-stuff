@@ -14,6 +14,8 @@ public class ComponentGetter<T> where T : Component
 
     private readonly string _gameObjectName;
 
+    private readonly GameObject _gameObject;
+
     /// <summary>
     /// Initializes a new ComponentGetter which can be used to retrieve 
     /// component T on the game object with the name specified.
@@ -25,6 +27,18 @@ public class ComponentGetter<T> where T : Component
 	{
 	    _gameObjectName = gameObjectName;
 	}
+
+    /// <summary>
+    /// Initializes a new ComponentGetter which can be used to retrieve 
+    /// component T on the given game object.
+    /// </summary>
+    /// <param name="gameObject">
+    /// The game object which the component is attached to
+    /// </param>
+    public ComponentGetter(GameObject gameObject)
+    {
+        _gameObject = gameObject;
+    }
 
     /// <summary>
     /// Gets the component.
@@ -39,12 +53,15 @@ public class ComponentGetter<T> where T : Component
             {
                 return _component;
             }
-            var go = GameObject.Find(_gameObjectName);
-            if (go == null)
+            if (_gameObject == null)
+            {
+                _gameObject = GameObject.Find(_gameObjectName);
+            }
+            if (_gameObject == null)
             {
                 return null;
             }
-            _component = go.GetComponent<T>();
+            _component = _gameObject.GetComponent<T>();
             return _component;
         }
     }
