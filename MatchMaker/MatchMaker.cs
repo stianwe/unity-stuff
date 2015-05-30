@@ -7,12 +7,30 @@ public class MatchMaker : MonoBehaviour
 {
 
     public string GameTypeName = "MatchMaker_testGame";
+    /// <summary>
+    /// MinPlayers indicates the minimum number of players which must be connected
+    /// for a JoinOrCreateGame() call to stop looking for other hosts (than itself)
+    /// </summary>
+    public int MinPlayers = 2;
     public int MaxPlayers = 4;
     public int Port = 25000;
     public bool EnableLogging = true;
 
+    /// <summary>
+    /// The timeout between each join game retry when hosting a game
+    /// as a result of a JoinOrCreateGame() call, while the there are
+    /// less players in the game than MinPlayers
+    /// </summary>
+    public int JoinOrCreateGameMinPlayersEnsuringTimeOut = 1;
+    private bool _ensuringMinPlayers = false;
+
     private bool _autoRetry;
     private bool _stop = false;
+
+    /// <summary>
+    /// The number of connected players (not including the host)
+    /// </summary>
+    private int _numberOfConnectedPlayers = 0; 
 
     private readonly List<Action<HostData[]>> _onHostListReceivedActions = new List<Action<HostData[]>>();
     private readonly object _onHostListReceivedActionsLock = new object();
@@ -110,12 +128,20 @@ public class MatchMaker : MonoBehaviour
         {
             Log("Checking game [gameName=" + host.gameName + ", connectedPlayers=" + host.connectedPlayers +
                 ", comment=" + host.comment + ", playerLimit=" + host.playerLimit + "]..");
-            if (host.connectedPlayers < MaxPlayers && preference == HostPreference.FirstAvailable)
+            if (host.connectedPlayers < MaxPlayers && preference == HostPreference.FirstAvailable &&
+                (!_ensuringMinPlayers || (_ensuringMinPlayers && SelectHostWhileEnsuringMinPlayers(host))))
             {
                 return host;
             }
         }
         return null;
+    }
+
+    private bool SelectHostWhileEnsuringMinPlayers(HostData host)
+    {
+        // Just need som rule to decide who shall join who, as both hosts will be doing this at the same time
+        // The rule, as of now, is the host with the greater guid joins the one with the lesser guid(?)
+        return _ensuringMinPlayers && host.guid != Network.player.guid && String.Compare(host.guid, Network.player.guid) > 0;
     }
 
     private void JoinGameHelper(HostPreference preference, bool autoRetry, float retryTimeout, Action<bool> onDone=null)
@@ -175,18 +201,40 @@ public class MatchMaker : MonoBehaviour
                 Log("Failed to create game. Perhaps a server is already running on this machine. Trying to join again..");
                 JoinGame(); // Note: Will auto retry
             }
+            else
+            {
+                EnsureMinPlayers();
+            }
         });
+    }
+
+    private void EnsureMinPlayers()
+    {
+        Log("Ensuring min players (" + MinPlayers + ")..");
+        _ensuringMinPlayers = true;
+        StartCoroutine(EnsureMinPlayersHelper());
+    }
+
+    private IEnumerator EnsureMinPlayersHelper()
+    {
+        while (_numberOfConnectedPlayers < MinPlayers - 1)
+        {
+            yield return new WaitForSeconds(JoinOrCreateGameMinPlayersEnsuringTimeOut);
+            JoinGame(autoRetry: false);
+        }
     }
 
     #region EventLogging
 
     void OnPlayerConnected(NetworkPlayer player)
     {
+        _numberOfConnectedPlayers++;
         Log("Player connected: [IP=" + player.ipAddress + "].");
     }
 
     void OnPlayerDisconnected(NetworkPlayer player)
     {
+        _numberOfConnectedPlayers--;
         Log("Player disconnected: [IP=" + player.ipAddress + "].");
     }
 
