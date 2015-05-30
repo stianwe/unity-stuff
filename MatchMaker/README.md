@@ -21,6 +21,6 @@ Instructions:
 Tips:
 <ol>
 <li>If you need to run some code when joining a game, you can override void OnConnectedToServer() in any MonoBehaviour script.</li>
-<li>If you need to run some code when startubg a game, you can override void OnServerInitialized() in any MonoBehaviour script.</li/>
+<li>If you need to run some code when starting a game, you can override void OnServerInitialized() in any MonoBehaviour script.</li/>
 <li>If you need to run some code when a player connects or disconnects to your game, you can override void OnPlayerConnected(NetworkPlayer) or void OnPlayerDisconnected(NetworkPlayer) in any MonoBehaviour script.</li> 
 </ol>
