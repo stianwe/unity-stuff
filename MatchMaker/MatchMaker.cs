@@ -18,10 +18,16 @@ public class MatchMaker : MonoBehaviour
 
     /// <summary>
     /// The timeout between each join game retry when hosting a game
-    /// as a result of a JoinOrCreateGame() call, while the there are
+    /// as a result of a JoinOrCreateGame() call, while there are
     /// less players in the game than MinPlayers
     /// </summary>
     public int JoinOrCreateGameMinPlayersEnsuringTimeOut = 1;
+    /// <summary>
+    /// The max number of times it will be attempted to join a game
+    /// as a result of a JoinOrCreateGame() call, while there are less
+    /// players in the game than MinPlayers
+    /// </summary>
+    public int JoinOrCreateGameMinPlayersEnsuringMaxAttempts = 10;
     private bool _ensuringMinPlayers = false;
 
     private bool _autoRetry;
@@ -217,11 +223,13 @@ public class MatchMaker : MonoBehaviour
 
     private IEnumerator EnsureMinPlayersHelper()
     {
-        while (_numberOfConnectedPlayers < MinPlayers - 1)
+        int counter = 0;
+        while (_numberOfConnectedPlayers < MinPlayers - 1 && counter++ < JoinOrCreateGameMinPlayersEnsuringMaxAttempts)
         {
             yield return new WaitForSeconds(JoinOrCreateGameMinPlayersEnsuringTimeOut);
             JoinGame(autoRetry: false);
         }
+        Log("No longer looking for other hosts.");
     }
 
     #region EventLogging
